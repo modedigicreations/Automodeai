@@ -18,7 +18,7 @@ Usage:
 
 Available swarms:
   sitegen    A-SiteGen Protocol — Autonomous Website Builder (5 agents, 3 phases)
-  edunet     A-EduNet — Autonomous Course Creation Ecosystem (6 agents, 3 phases)
+  edunet     A-EduNet — Autonomous Course Creation Ecosystem (5 agents, 3 phases)
 
 Examples:
   npx tsx src/index.ts --swarm sitegen "I run a fashion store in Lagos, I want an ecommerce site"

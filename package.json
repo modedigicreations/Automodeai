@@ -1,5 +1,5 @@
 {
-  "name": "swarm-agent",
+  "name": "automodeai",
   "version": "1.0.0",
   "description": "AutoMode AI — Swarm Agent Orchestrator powered by Claude",
   "type": "module",
@@ -9,6 +9,15 @@
     "start": "tsx src/index.ts",
     "swarm:sitegen": "tsx src/index.ts --swarm sitegen",
     "swarm:edunet": "tsx src/index.ts --swarm edunet"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modedigicreations/Automodeai.git"
+  },
+  "author": "Mode Digital Creations Limited",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

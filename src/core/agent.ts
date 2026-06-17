@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AgentConfig, AgentResult, ToolDefinition } from "./types.js";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 export class Agent {
   private client: Anthropic;
@@ -46,16 +47,26 @@ export class Agent {
 
     const maxIterations = 10;
     for (let i = 0; i < maxIterations; i++) {
-      const response = await this.client.messages.create({
-        model: this.config.model ?? DEFAULT_MODEL,
-        max_tokens: 16000,
-        system: this.config.role,
-        messages,
-        ...(anthropicTools.length > 0 ? { tools: anthropicTools } : {}),
-      });
+      const response = await this.callWithTimeout(
+        () =>
+          this.client.messages.create({
+            model: this.config.model ?? DEFAULT_MODEL,
+            max_tokens: 16000,
+            system: this.config.role,
+            messages,
+            ...(anthropicTools.length > 0 ? { tools: anthropicTools } : {}),
+          }),
+        this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      );
 
       totalInputTokens += response.usage.input_tokens;
       totalOutputTokens += response.usage.output_tokens;
+
+      if ((response.stop_reason as string) === "refusal") {
+        throw new Error(
+          `[${this.config.name}] Claude refused the request. This may be due to content policy restrictions.`,
+        );
+      }
 
       if (response.stop_reason === "end_turn" || response.stop_reason === "max_tokens") {
         finalText = this.extractText(response.content);
@@ -93,6 +104,12 @@ export class Agent {
       break;
     }
 
+    if (!finalText) {
+      throw new Error(
+        `[${this.config.name}] Agent produced no output after ${maxIterations} iterations.`,
+      );
+    }
+
     if (this.config.outputSchema) {
       const parsed = this.config.outputSchema.safeParse(finalText);
       if (!parsed.success) {
@@ -109,6 +126,21 @@ export class Agent {
       usage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
       durationMs: Date.now() - startTime,
     };
+  }
+
+  private async callWithTimeout<T>(
+    fn: () => Promise<T>,
+    timeoutMs: number,
+  ): Promise<T> {
+    return Promise.race([
+      fn(),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`[${this.config.name}] API call timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        ),
+      ),
+    ]);
   }
 
   private extractText(content: Anthropic.ContentBlock[]): string {

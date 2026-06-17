@@ -15,6 +15,7 @@ export interface AgentConfig {
   tools?: ToolDefinition[];
   inputSchema?: z.ZodType;
   outputSchema?: z.ZodType;
+  timeoutMs?: number;
 }
 
 export interface PhaseConfig {

@@ -71,17 +71,20 @@ Autonomous Course Creation Ecosystem — 5 agents across 3 phases:
 ### Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/swarm-agent.git
-cd swarm-agent
+git clone https://github.com/modedigicreations/Automodeai.git
+cd Automodeai
 npm install
 ```
 
 ### Configuration
 
+Set your Anthropic API key as an environment variable:
+
 ```bash
-cp .env.example .env
-# Edit .env and add your Anthropic API key
+export ANTHROPIC_API_KEY=your-api-key-here
 ```
+
+To make it persistent, add the export line to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.).
 
 ### Usage
 
@@ -151,7 +154,6 @@ const searchTool = defineTool({
     query: { type: "string", description: "Search query" },
   },
   execute: async (input) => {
-    // Your search implementation
     return `Results for: ${input.query}`;
   },
 });
@@ -162,6 +164,18 @@ const agentWithTools = {
   tools: [searchTool],
 };
 ```
+
+### Agent Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `name` | string | required | Agent display name |
+| `role` | string | required | System prompt defining the agent's behavior |
+| `model` | string | `claude-sonnet-4-6` | Claude model to use |
+| `tools` | ToolDefinition[] | `[]` | Tools the agent can call |
+| `timeoutMs` | number | `120000` | Per-API-call timeout in milliseconds |
+| `inputSchema` | ZodType | — | Zod schema to validate input |
+| `outputSchema` | ZodType | — | Zod schema to validate output |
 
 ## Project Structure
 
