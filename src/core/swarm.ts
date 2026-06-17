@@ -2,22 +2,28 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Agent } from "./agent.js";
 import { SwarmContext } from "./context.js";
 import type { AgentResult, PhaseResult, SwarmConfig, SwarmResult } from "./types.js";
+import { existsSync } from "fs";
+
+// Load .env file programmatically if it exists
+if (existsSync(".env") && typeof process.loadEnvFile === "function") {
+  process.loadEnvFile();
+}
 
 export class Swarm {
   private config: SwarmConfig;
-  private client: Anthropic;
+  private client?: Anthropic;
 
   constructor(config: SwarmConfig) {
+    this.config = config;
+  }
+
+  async run(input: string): Promise<SwarmResult> {
     if (!process.env["ANTHROPIC_API_KEY"]) {
       throw new Error(
         "ANTHROPIC_API_KEY environment variable is required. Set it or create a .env file.",
       );
     }
-    this.config = config;
     this.client = new Anthropic();
-  }
-
-  async run(input: string): Promise<SwarmResult> {
     const swarmStart = Date.now();
     const context = new SwarmContext(input);
     const maxRetries = this.config.maxRetries ?? 1;
@@ -35,7 +41,7 @@ export class Swarm {
       console.log(`   ┌─ Phase: ${phase.name} (${agentCount} agent${agentCount > 1 ? "s" : ""}${agentCount > 1 ? " in parallel" : ""})`);
 
       const agentPromises = phase.agents.map((agentConfig) =>
-        this.runAgent(agentConfig.name, new Agent(this.client, agentConfig, phase.name), context, maxRetries),
+        this.runAgent(agentConfig.name, new Agent(this.client!, agentConfig, phase.name), context, maxRetries),
       );
 
       const results = await Promise.all(agentPromises);

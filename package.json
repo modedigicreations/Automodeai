@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "tsx src/index.ts",
     "swarm:sitegen": "tsx src/index.ts --swarm sitegen",
-    "swarm:edunet": "tsx src/index.ts --swarm edunet"
+    "swarm:edunet": "tsx src/index.ts --swarm edunet",
+    "test": "node --import tsx --test src/core/context.test.ts src/core/agent.test.ts src/core/swarm.test.ts"
   },
   "repository": {
     "type": "git",
