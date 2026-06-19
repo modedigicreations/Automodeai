@@ -1,13 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Agent } from "./agent.js";
 import { SwarmContext } from "./context.js";
+import { loadEnvFile } from "./env.js";
 import type { AgentResult, PhaseResult, SwarmConfig, SwarmResult } from "./types.js";
-import { existsSync } from "fs";
 
-// Load .env file programmatically if it exists
-if (existsSync(".env") && typeof process.loadEnvFile === "function") {
-  process.loadEnvFile();
-}
+loadEnvFile();
 
 export class Swarm {
   private config: SwarmConfig;

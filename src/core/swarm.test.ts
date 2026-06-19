@@ -6,15 +6,22 @@ import type { AgentResult, SwarmConfig } from "./types.js";
 
 describe("Swarm", () => {
   let originalAgentRun: typeof Agent.prototype.run;
+  let originalApiKey: string | undefined;
 
   before(() => {
     // Set a dummy API key so Swarm initialization doesn't throw
+    originalApiKey = process.env["ANTHROPIC_API_KEY"];
     process.env["ANTHROPIC_API_KEY"] = "dummy-api-key";
     originalAgentRun = Agent.prototype.run;
   });
 
   after(() => {
     Agent.prototype.run = originalAgentRun;
+    if (originalApiKey === undefined) {
+      delete process.env["ANTHROPIC_API_KEY"];
+    } else {
+      process.env["ANTHROPIC_API_KEY"] = originalApiKey;
+    }
   });
 
   test("should orchestrate sequential phases and accumulate outputs", async () => {

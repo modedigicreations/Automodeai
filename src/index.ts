@@ -2,6 +2,7 @@ import { Swarm } from "./core/swarm.js";
 import { sitegenSwarm } from "./examples/sitegen.js";
 import { edunetSwarm } from "./examples/edunet.js";
 import type { SwarmConfig } from "./core/types.js";
+import { fileURLToPath } from "node:url";
 
 const swarms: Record<string, SwarmConfig> = {
   sitegen: sitegenSwarm,
@@ -74,7 +75,9 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main();
+}
 
 export { Swarm } from "./core/swarm.js";
 export { Agent } from "./core/agent.js";

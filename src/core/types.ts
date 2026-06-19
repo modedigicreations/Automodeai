@@ -16,6 +16,7 @@ export interface AgentConfig {
   inputSchema?: z.ZodType;
   outputSchema?: z.ZodType;
   timeoutMs?: number;
+  maxTokens?: number;
 }
 
 export interface PhaseConfig {

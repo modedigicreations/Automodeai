@@ -78,13 +78,23 @@ npm install
 
 ### Configuration
 
-Set your Anthropic API key as an environment variable:
+Create a local `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env`:
+
+```bash
+ANTHROPIC_API_KEY=your-api-key-here
+```
+
+You can also set the key directly in your shell:
 
 ```bash
 export ANTHROPIC_API_KEY=your-api-key-here
 ```
-
-To make it persistent, add the export line to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.).
 
 ### Usage
 
@@ -174,6 +184,7 @@ const agentWithTools = {
 | `model` | string | `claude-sonnet-4-6` | Claude model to use |
 | `tools` | ToolDefinition[] | `[]` | Tools the agent can call |
 | `timeoutMs` | number | `120000` | Per-API-call timeout in milliseconds |
+| `maxTokens` | number | `16000` | Maximum Claude output tokens for one response |
 | `inputSchema` | ZodType | — | Zod schema to validate input |
 | `outputSchema` | ZodType | — | Zod schema to validate output |
 

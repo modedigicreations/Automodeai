@@ -210,4 +210,43 @@ describe("Agent", () => {
       /API call timed out after 10ms/
     );
   });
+
+  test("should reject truncated max_tokens responses", async () => {
+    const mockClient = {
+      messages: {
+        create: async () => createMockResponse("Partial output", "max_tokens"),
+      },
+    } as unknown as Anthropic;
+
+    const agent = new Agent(mockClient, {
+      name: "TruncatedAgent",
+      role: "Test",
+    }, "Phase 1");
+
+    await assert.rejects(
+      async () => agent.run("Hi"),
+      /max_tokens was reached/
+    );
+  });
+
+  test("should pass configured maxTokens to Claude", async () => {
+    let receivedMaxTokens = 0;
+    const mockClient = {
+      messages: {
+        create: async (params: { max_tokens: number }) => {
+          receivedMaxTokens = params.max_tokens;
+          return createMockResponse("Done");
+        },
+      },
+    } as unknown as Anthropic;
+
+    const agent = new Agent(mockClient, {
+      name: "MaxTokenAgent",
+      role: "Test",
+      maxTokens: 1234,
+    }, "Phase 1");
+
+    await agent.run("Hi");
+    assert.strictEqual(receivedMaxTokens, 1234);
+  });
 });
