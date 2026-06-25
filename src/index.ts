@@ -67,6 +67,7 @@ async function main(): Promise<void> {
       console.log(`  ${phase.name}: ${phase.agents.map((a) => a.agentName).join(", ")} (${phase.durationMs}ms)`);
     }
     console.log(`Total: ${result.totalDurationMs}ms | ${result.totalTokens.input}+${result.totalTokens.output} tokens`);
+    console.log(`Estimated cost: $${result.estimatedCost.total.toFixed(4)}`);
   } catch (err) {
     console.error(
       `\nError: ${err instanceof Error ? err.message : String(err)}`,

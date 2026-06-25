@@ -2,7 +2,8 @@ import type { AgentResult } from "./types.js";
 
 export class SwarmContext {
   readonly userPrompt: string;
-  private results: Map<string, AgentResult> = new Map();
+  private results: AgentResult[] = [];
+  private resultsByName: Map<string, AgentResult> = new Map();
   metadata: Record<string, unknown> = {};
 
   constructor(userPrompt: string) {
@@ -10,24 +11,24 @@ export class SwarmContext {
   }
 
   addResult(result: AgentResult): void {
-    this.results.set(result.agentName, result);
+    this.results.push(result);
+    this.resultsByName.set(result.agentName, result);
   }
 
   getResult(agentName: string): AgentResult | undefined {
-    return this.results.get(agentName);
+    return this.resultsByName.get(agentName);
   }
 
   getPhaseResults(phaseName: string): AgentResult[] {
-    return [...this.results.values()].filter((r) => r.phaseName === phaseName);
+    return this.results.filter((r) => r.phaseName === phaseName);
   }
 
   getAllResults(): AgentResult[] {
-    return [...this.results.values()];
+    return [...this.results];
   }
 
   get totalTokens(): { input: number; output: number } {
-    const all = this.getAllResults();
-    return all.reduce(
+    return this.results.reduce(
       (acc, r) => ({
         input: acc.input + r.usage.inputTokens,
         output: acc.output + r.usage.outputTokens,
@@ -43,6 +44,7 @@ export class SwarmContext {
     if (completed.length > 0) {
       prompt += `\n\n=== Completed work from other agents ===\n`;
       for (const result of completed) {
+        if (result.error) continue;
         prompt += `\n[${result.agentName}]:\n${result.output}\n`;
       }
     }
@@ -53,8 +55,8 @@ export class SwarmContext {
   }
 
   buildFinalOutput(): string {
-    const all = this.getAllResults();
-    const sections = all.map(
+    const successful = this.results.filter((r) => !r.error);
+    const sections = successful.map(
       (r) => `## ${r.agentName}\n\n${r.output}`,
     );
     return sections.join("\n\n---\n\n");

@@ -22,6 +22,7 @@ export interface AgentConfig {
 export interface PhaseConfig {
   name: string;
   agents: AgentConfig[];
+  maxConcurrency?: number;
 }
 
 export interface SwarmConfig {
@@ -29,7 +30,11 @@ export interface SwarmConfig {
   description: string;
   phases: PhaseConfig[];
   onAgentComplete?: (result: AgentResult) => void;
+  onAgentError?: (agentName: string, error: Error) => void;
+  onPhaseStart?: (phaseName: string) => void;
+  onPhaseComplete?: (result: PhaseResult) => void;
   maxRetries?: number;
+  continueOnAgentFailure?: boolean;
 }
 
 export interface AgentResult {
@@ -38,6 +43,7 @@ export interface AgentResult {
   output: string;
   usage: { inputTokens: number; outputTokens: number };
   durationMs: number;
+  error?: string;
 }
 
 export interface PhaseResult {
@@ -52,4 +58,5 @@ export interface SwarmResult {
   phases: PhaseResult[];
   totalDurationMs: number;
   totalTokens: { input: number; output: number };
+  estimatedCost: { input: number; output: number; total: number };
 }

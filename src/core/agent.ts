@@ -196,10 +196,12 @@ Please correct your output to strictly conform to the required format/schema. If
         result = `Error: ${err instanceof Error ? err.message : String(err)}`;
       }
 
+      const isError = result.startsWith("Error: ");
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
         content: result,
+        ...(isError ? { is_error: true } : {}),
       });
     }
 

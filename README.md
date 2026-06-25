@@ -188,6 +188,37 @@ const agentWithTools = {
 | `inputSchema` | ZodType | — | Zod schema to validate input |
 | `outputSchema` | ZodType | — | Zod schema to validate output |
 
+### Phase Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `name` | string | required | Phase display name |
+| `agents` | AgentConfig[] | required | Agents to run in this phase |
+| `maxConcurrency` | number | agent count | Max agents running simultaneously |
+
+### Swarm Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `name` | string | required | Swarm display name |
+| `description` | string | required | Description shown on startup |
+| `phases` | PhaseConfig[] | required | Ordered list of execution phases |
+| `maxRetries` | number | `1` | Max retry attempts per failed agent |
+| `continueOnAgentFailure` | boolean | `false` | Continue swarm if an agent fails |
+| `onAgentComplete` | callback | — | Called when an agent finishes |
+| `onAgentError` | callback | — | Called when an agent fails |
+| `onPhaseStart` | callback | — | Called when a phase begins |
+| `onPhaseComplete` | callback | — | Called when a phase ends |
+
+### Cost Estimation
+
+The swarm result includes estimated API cost based on token usage:
+
+```typescript
+const result = await swarm.run("Build me a website");
+console.log(`Cost: $${result.estimatedCost.total.toFixed(4)}`);
+```
+
 ## Project Structure
 
 ```
