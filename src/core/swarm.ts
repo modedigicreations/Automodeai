@@ -2,23 +2,46 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Agent } from "./agent.js";
 import { SwarmContext } from "./context.js";
 import { loadEnvFile } from "./env.js";
-import type { AgentResult, PhaseResult, SwarmConfig, SwarmResult } from "./types.js";
+import type { AgentResult, Logger, PhaseResult, SwarmConfig, SwarmResult } from "./types.js";
 
+const DEFAULT_COST_MODEL = "claude-sonnet-4-6";
+const DEFAULT_RETRY_DELAY_MS = 1_000;
+const MAX_RETRY_DELAY_MS = 30_000;
+
+// USD per 1M tokens.
 const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-6": { input: 3.0, output: 15.0 },
+  "claude-sonnet-5": { input: 3.0, output: 15.0 },
   "claude-sonnet-4-5-20241022": { input: 3.0, output: 15.0 },
-  "claude-haiku-4-5-20251001": { input: 0.80, output: 4.0 },
-  "claude-opus-4-8": { input: 15.0, output: 75.0 },
+  "claude-haiku-4-5-20251001": { input: 1.0, output: 5.0 },
+  "claude-haiku-4-5": { input: 1.0, output: 5.0 },
+  "claude-opus-4-8": { input: 5.0, output: 25.0 },
+  "claude-opus-4-7": { input: 5.0, output: 25.0 },
+  "claude-opus-4-6": { input: 5.0, output: 25.0 },
+  "claude-fable-5": { input: 10.0, output: 50.0 },
 };
 
-function estimateCost(
-  tokens: { input: number; output: number },
-  model: string = "claude-sonnet-4-6",
+/**
+ * Sums the cost of each agent's usage at the rates of the model that agent
+ * actually used, so mixed-model swarms are priced correctly.
+ */
+function estimateCostFromResults(
+  results: AgentResult[],
 ): { input: number; output: number; total: number } {
-  const rates = MODEL_COSTS[model] ?? MODEL_COSTS["claude-sonnet-4-6"];
-  const inputCost = (tokens.input / 1_000_000) * rates.input;
-  const outputCost = (tokens.output / 1_000_000) * rates.output;
-  return { input: inputCost, output: outputCost, total: inputCost + outputCost };
+  return results.reduce(
+    (acc, result) => {
+      const model = result.model ?? DEFAULT_COST_MODEL;
+      const rates = MODEL_COSTS[model] ?? MODEL_COSTS[DEFAULT_COST_MODEL]!;
+      const inputCost = (result.usage.inputTokens / 1_000_000) * rates.input;
+      const outputCost = (result.usage.outputTokens / 1_000_000) * rates.output;
+      return {
+        input: acc.input + inputCost,
+        output: acc.output + outputCost,
+        total: acc.total + inputCost + outputCost,
+      };
+    },
+    { input: 0, output: 0, total: 0 },
+  );
 }
 
 async function runWithConcurrencyLimit<T>(
@@ -54,10 +77,13 @@ async function runWithConcurrencyLimit<T>(
 
 export class Swarm {
   private config: SwarmConfig;
-  private client?: Anthropic;
 
   constructor(config: SwarmConfig) {
     this.config = config;
+  }
+
+  private get logger(): Logger {
+    return this.config.logger ?? console;
   }
 
   async run(input: string): Promise<SwarmResult> {
@@ -68,29 +94,31 @@ export class Swarm {
         "ANTHROPIC_API_KEY environment variable is required. Set it or create a .env file.",
       );
     }
-    this.client = new Anthropic();
+    // Local to this run — a shared instance field would race if run() were
+    // called concurrently on the same Swarm instance.
+    const client = new Anthropic();
     const swarmStart = Date.now();
     const context = new SwarmContext(input);
     const maxRetries = this.config.maxRetries ?? 1;
     const continueOnFailure = this.config.continueOnAgentFailure ?? false;
     const phaseResults: PhaseResult[] = [];
 
-    console.log(`\n🐝 Swarm "${this.config.name}" activated`);
-    console.log(`   ${this.config.description}`);
-    console.log(`   Input: ${input.slice(0, 100)}${input.length > 100 ? "..." : ""}`);
-    console.log(`   Phases: ${this.config.phases.length} | Agents: ${this.config.phases.reduce((sum, p) => sum + p.agents.length, 0)}\n`);
+    this.logger.log(`\n🐝 Swarm "${this.config.name}" activated`);
+    this.logger.log(`   ${this.config.description}`);
+    this.logger.log(`   Input: ${input.slice(0, 100)}${input.length > 100 ? "..." : ""}`);
+    this.logger.log(`   Phases: ${this.config.phases.length} | Agents: ${this.config.phases.reduce((sum, p) => sum + p.agents.length, 0)}\n`);
 
     for (const phase of this.config.phases) {
       const phaseStart = Date.now();
       const agentCount = phase.agents.length;
 
-      console.log(`   ┌─ Phase: ${phase.name} (${agentCount} agent${agentCount > 1 ? "s" : ""}${agentCount > 1 ? " in parallel" : ""})`);
+      this.logger.log(`   ┌─ Phase: ${phase.name} (${agentCount} agent${agentCount > 1 ? "s" : ""}${agentCount > 1 ? " in parallel" : ""})`);
       this.config.onPhaseStart?.(phase.name);
 
       const maxConcurrency = phase.maxConcurrency ?? agentCount;
 
       const agentTasks = phase.agents.map((agentConfig) => () =>
-        this.runAgent(agentConfig.name, new Agent(this.client!, agentConfig, phase.name), context, maxRetries),
+        this.runAgent(agentConfig.name, new Agent(client, agentConfig, phase.name), context, maxRetries),
       );
 
       const settled = await runWithConcurrencyLimit(agentTasks, maxConcurrency);
@@ -107,7 +135,7 @@ export class Swarm {
           results.push(result);
         } else {
           const error = outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
-          console.log(`   │  ✗ ${agentName} failed: ${error.message}`);
+          this.logger.log(`   │  ✗ ${agentName} failed: ${error.message}`);
           this.config.onAgentError?.(agentName, error);
 
           const failedResult: AgentResult = {
@@ -136,17 +164,18 @@ export class Swarm {
       phaseResults.push(phaseResult);
       this.config.onPhaseComplete?.(phaseResult);
 
-      console.log(`   └─ Phase "${phase.name}" completed (${phaseDuration}ms)\n`);
+      this.logger.log(`   └─ Phase "${phase.name}" completed (${phaseDuration}ms)\n`);
     }
 
     const totalDurationMs = Date.now() - swarmStart;
     const totalTokens = context.totalTokens;
-    const primaryModel = this.config.phases[0]?.agents[0]?.model ?? "claude-sonnet-4-6";
-    const estimatedCost = estimateCost(totalTokens, primaryModel);
+    // Cost is computed per agent using the model each agent actually ran on,
+    // so swarms mixing e.g. Haiku and Opus agents are priced correctly.
+    const estimatedCost = estimateCostFromResults(context.getAllResults());
 
-    console.log(`✅ Swarm "${this.config.name}" completed in ${totalDurationMs}ms`);
-    console.log(`   Total tokens: ${totalTokens.input} input + ${totalTokens.output} output`);
-    console.log(`   Estimated cost: $${estimatedCost.total.toFixed(4)}\n`);
+    this.logger.log(`✅ Swarm "${this.config.name}" completed in ${totalDurationMs}ms`);
+    this.logger.log(`   Total tokens: ${totalTokens.input} input + ${totalTokens.output} output`);
+    this.logger.log(`   Estimated cost: $${estimatedCost.total.toFixed(4)}\n`);
 
     return {
       output: context.buildFinalOutput(),
@@ -169,14 +198,22 @@ export class Swarm {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         if (attempt > 0) {
-          console.log(`   │  ⟳ Retrying ${name} (attempt ${attempt + 1})...`);
+          // Exponential backoff: retryDelayMs * 2^(attempt-1), capped at 30s.
+          const delay = Math.min(
+            (this.config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS) * Math.pow(2, attempt - 1),
+            MAX_RETRY_DELAY_MS,
+          );
+          if (delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+          this.logger.log(`   │  ⟳ Retrying ${name} (attempt ${attempt + 1}/${maxRetries + 1}) after ${delay}ms...`);
         }
-        console.log(`   │  ▸ ${name} working...`);
+        this.logger.log(`   │  ▸ ${name} working...`);
 
         const agentInput = context.buildAgentInput(name);
         const result = await agent.run(agentInput);
 
-        console.log(
+        this.logger.log(
           `   │  ✓ ${name} done (${result.durationMs}ms, ${result.usage.inputTokens}+${result.usage.outputTokens} tokens)`,
         );
 

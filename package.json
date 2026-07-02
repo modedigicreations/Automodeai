@@ -9,6 +9,9 @@
     "start": "tsx src/index.ts",
     "swarm:sitegen": "tsx src/index.ts --swarm sitegen",
     "swarm:edunet": "tsx src/index.ts --swarm edunet",
+    "swarm:contentops": "tsx src/index.ts --swarm contentops",
+    "swarm:bizanalyst": "tsx src/index.ts --swarm bizanalyst",
+    "swarm:list": "tsx src/index.ts --list",
     "test": "node --import tsx --test src/core/context.test.ts src/core/env.test.ts src/core/agent.test.ts src/core/swarm.test.ts"
   },
   "repository": {

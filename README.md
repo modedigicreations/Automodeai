@@ -61,6 +61,24 @@ Autonomous Course Creation Ecosystem — 5 agents across 3 phases:
 | Content Creation | Content Agent, Assessment Agent | Parallel |
 | Packaging & Deployment | Certification Agent, LMS Agent | Parallel |
 
+### A-ContentOps
+Marketing Content Pipeline — 5 agents across 3 phases:
+
+| Phase | Agents | Execution |
+|-------|--------|-----------|
+| Research & Strategy | Strategy Agent | Sequential |
+| Multi-Channel Content Creation | Blog Agent, Social Agent, Email Agent | Parallel |
+| Optimization & Publishing | Editor Agent | Sequential |
+
+### A-BizAnalyst
+Business Intelligence Analyst — 5 agents across 3 phases:
+
+| Phase | Agents | Execution |
+|-------|--------|-----------|
+| Market Intelligence | Market Agent, Competitor Agent | Parallel |
+| Business Model & Strategy | Financial Agent, SWOT Agent | Parallel |
+| Executive Summary | Analyst Agent | Sequential |
+
 ## Getting Started
 
 ### Prerequisites
@@ -104,6 +122,12 @@ npx tsx src/index.ts --swarm sitegen "I run a fashion store in Lagos, I want an 
 
 # Generate a full digital course
 npx tsx src/index.ts --swarm edunet "Create a beginner Python programming course for secondary school students"
+
+# Produce a full multi-channel content package
+npx tsx src/index.ts --swarm contentops "Launch campaign for a productivity SaaS aimed at freelancers"
+
+# Get an executive-grade business analysis
+npx tsx src/index.ts --swarm bizanalyst "A subscription meal-prep delivery service in Abuja"
 ```
 
 Or using npm scripts:
@@ -111,6 +135,28 @@ Or using npm scripts:
 ```bash
 npm run swarm:sitegen -- "I run a fashion store in Lagos, I want an ecommerce site"
 npm run swarm:edunet -- "Create a beginner Python programming course"
+npm run swarm:contentops -- "Launch campaign for a productivity SaaS"
+npm run swarm:bizanalyst -- "A subscription meal-prep delivery service in Abuja"
+```
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--swarm <name>` | The swarm to run (required unless `--list` is used) |
+| `--list` | List all available swarms with descriptions and agent counts, then exit |
+| `--output <file>` | Save the swarm output (markdown) to a file |
+| `--json` | Print the full `SwarmResult` as JSON and suppress progress logs — useful for piping |
+
+```bash
+# List available swarms
+npx tsx src/index.ts --list          # or: npm run swarm:list
+
+# Save the output to a markdown file
+npx tsx src/index.ts --swarm sitegen "fashion store" --output website.md
+
+# Pipe machine-readable results to another tool
+npx tsx src/index.ts --swarm sitegen "fashion store" --json > result.json
 ```
 
 ### Build
@@ -204,19 +250,50 @@ const agentWithTools = {
 | `description` | string | required | Description shown on startup |
 | `phases` | PhaseConfig[] | required | Ordered list of execution phases |
 | `maxRetries` | number | `1` | Max retry attempts per failed agent |
+| `retryDelayMs` | number | `1000` | Base delay before the first retry; doubles per attempt with exponential backoff, capped at 30s |
 | `continueOnAgentFailure` | boolean | `false` | Continue swarm if an agent fails |
+| `logger` | Logger | `console` | Custom logger for swarm progress output |
 | `onAgentComplete` | callback | — | Called when an agent finishes |
 | `onAgentError` | callback | — | Called when an agent fails |
 | `onPhaseStart` | callback | — | Called when a phase begins |
 | `onPhaseComplete` | callback | — | Called when a phase ends |
 
+### Custom Logging
+
+Library consumers can suppress or redirect the swarm's progress output by passing a `Logger`:
+
+```typescript
+import type { Logger, SwarmConfig } from "./core/types.js";
+
+// Silence all progress output
+const silentLogger: Logger = { log: () => {}, warn: () => {}, error: () => {} };
+
+// Or redirect to your own logging system
+const customLogger: Logger = {
+  log: (msg) => myLogSink.info(msg),
+  warn: (msg) => myLogSink.warn(msg),
+  error: (msg) => myLogSink.error(msg),
+};
+
+const config: SwarmConfig = {
+  name: "Quiet Swarm",
+  description: "Runs without console noise",
+  logger: silentLogger,
+  phases: [/* ... */],
+};
+```
+
 ### Cost Estimation
 
-The swarm result includes estimated API cost based on token usage:
+The swarm result includes estimated API cost based on token usage. Cost is computed **per agent** using the model each agent actually ran on, so swarms that mix models (e.g. Haiku for research, Opus for synthesis) are priced correctly. Each `AgentResult` also records its `model` for full observability:
 
 ```typescript
 const result = await swarm.run("Build me a website");
 console.log(`Cost: $${result.estimatedCost.total.toFixed(4)}`);
+
+for (const agent of result.agents) {
+  console.log(`${agent.agentName} ran on ${agent.model}`); // e.g. "claude-sonnet-4-6"
+}
 ```
 
 ## Project Structure
@@ -233,7 +310,9 @@ src/
 │   └── tool.ts           # Tool definition helper
 └── examples/
     ├── sitegen.ts        # A-SiteGen swarm definition
-    └── edunet.ts         # A-EduNet swarm definition
+    ├── edunet.ts         # A-EduNet swarm definition
+    ├── contentops.ts     # A-ContentOps swarm definition
+    └── bizanalyst.ts     # A-BizAnalyst swarm definition
 ```
 
 ## Tech Stack

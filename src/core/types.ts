@@ -25,6 +25,12 @@ export interface PhaseConfig {
   maxConcurrency?: number;
 }
 
+export interface Logger {
+  log(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+}
+
 export interface SwarmConfig {
   name: string;
   description: string;
@@ -34,7 +40,11 @@ export interface SwarmConfig {
   onPhaseStart?: (phaseName: string) => void;
   onPhaseComplete?: (result: PhaseResult) => void;
   maxRetries?: number;
+  /** Base delay in ms before the first retry; doubles per attempt (capped at 30s). Default: 1000. */
+  retryDelayMs?: number;
   continueOnAgentFailure?: boolean;
+  /** Custom logger for swarm progress output. Defaults to `console`. */
+  logger?: Logger;
 }
 
 export interface AgentResult {
@@ -43,6 +53,8 @@ export interface AgentResult {
   output: string;
   usage: { inputTokens: number; outputTokens: number };
   durationMs: number;
+  /** The Claude model that powered this agent (used for per-agent cost estimation). */
+  model?: string;
   error?: string;
 }
 

@@ -83,6 +83,7 @@ Please correct your output to strictly conform to the required format/schema. If
       output: finalText,
       usage,
       durationMs: Date.now() - startTime,
+      model: this.config.model ?? DEFAULT_MODEL,
     };
   }
 
@@ -181,31 +182,32 @@ Please correct your output to strictly conform to the required format/schema. If
     content: Anthropic.ContentBlock[],
     tools: ToolDefinition[],
   ): Promise<Anthropic.ToolResultBlockParam[]> {
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    const toolUseBlocks = content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+    );
 
-    for (const block of content) {
-      if (block.type !== "tool_use") {
-        continue;
-      }
+    // Execute all tool calls from a single assistant turn in parallel —
+    // they are independent, and Claude expects all results in one user message.
+    return Promise.all(
+      toolUseBlocks.map(async (block): Promise<Anthropic.ToolResultBlockParam> => {
+        const tool = this.findTool(tools, block.name);
+        let result: string;
+        let isError = false;
+        try {
+          result = await tool.execute(block.input as Record<string, unknown>);
+        } catch (err) {
+          result = `Error: ${err instanceof Error ? err.message : String(err)}`;
+          isError = true;
+        }
 
-      const tool = this.findTool(tools, block.name);
-      let result: string;
-      try {
-        result = await tool.execute(block.input as Record<string, unknown>);
-      } catch (err) {
-        result = `Error: ${err instanceof Error ? err.message : String(err)}`;
-      }
-
-      const isError = result.startsWith("Error: ");
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: block.id,
-        content: result,
-        ...(isError ? { is_error: true } : {}),
-      });
-    }
-
-    return toolResults;
+        return {
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: result,
+          ...(isError ? { is_error: true } : {}),
+        };
+      }),
+    );
   }
 
   private toAnthropicTools(tools: ToolDefinition[]): Anthropic.Tool[] {

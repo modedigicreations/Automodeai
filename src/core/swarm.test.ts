@@ -135,6 +135,7 @@ describe("Swarm", () => {
       name: "RetrySwarm",
       description: "Retry test",
       maxRetries: 2,
+      retryDelayMs: 0,
       phases: [
         {
           name: "Phase One",
@@ -161,6 +162,7 @@ describe("Swarm", () => {
       name: "FailSwarm",
       description: "Failure test",
       maxRetries: 1,
+      retryDelayMs: 0,
       phases: [
         {
           name: "Phase One",
