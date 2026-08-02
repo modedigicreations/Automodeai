@@ -19,6 +19,8 @@ const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "claude-opus-4-7": { input: 5.0, output: 25.0 },
   "claude-opus-4-6": { input: 5.0, output: 25.0 },
   "claude-fable-5": { input: 10.0, output: 50.0 },
+  "deepseek-chat": { input: 0.14, output: 0.28 },
+  "deepseek-reasoner": { input: 0.55, output: 2.19 },
 };
 
 /**
@@ -89,14 +91,36 @@ export class Swarm {
   async run(input: string): Promise<SwarmResult> {
     loadEnvFile();
 
-    if (!process.env["ANTHROPIC_API_KEY"]) {
+    let needsAnthropic = false;
+    let needsDeepSeek = false;
+    for (const phase of this.config.phases) {
+      for (const agent of phase.agents) {
+        const provider = agent.provider ?? (agent.model?.includes("deepseek") ? "deepseek" : "anthropic");
+        if (provider === "deepseek") {
+          if (!agent.deepseekApiKey) {
+            needsDeepSeek = true;
+          }
+        } else {
+          needsAnthropic = true;
+        }
+      }
+    }
+
+    if (needsAnthropic && !process.env["ANTHROPIC_API_KEY"]) {
       throw new Error(
         "ANTHROPIC_API_KEY environment variable is required. Set it or create a .env file.",
       );
     }
+
+    if (needsDeepSeek && !process.env["DEEPSEEK_API_KEY"] && !process.env["DEEPSEEK_API_KEY"]) {
+      throw new Error(
+        "DEEPSEEK_API_KEY environment variable is required for DeepSeek agents. Set it or create a .env file.",
+      );
+    }
+
     // Local to this run — a shared instance field would race if run() were
     // called concurrently on the same Swarm instance.
-    const client = new Anthropic();
+    const client = process.env["ANTHROPIC_API_KEY"] ? new Anthropic() : null;
     const swarmStart = Date.now();
     const context = new SwarmContext(input);
     const maxRetries = this.config.maxRetries ?? 1;

@@ -11,12 +11,14 @@ export interface ToolDefinition {
 export interface AgentConfig {
   name: string;
   role: string;
+  provider?: 'anthropic' | 'deepseek';
   model?: string;
   tools?: ToolDefinition[];
   inputSchema?: z.ZodType;
   outputSchema?: z.ZodType;
   timeoutMs?: number;
   maxTokens?: number;
+  deepseekApiKey?: string;
 }
 
 export interface PhaseConfig {

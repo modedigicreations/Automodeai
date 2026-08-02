@@ -12,7 +12,7 @@
     "swarm:contentops": "tsx src/index.ts --swarm contentops",
     "swarm:bizanalyst": "tsx src/index.ts --swarm bizanalyst",
     "swarm:list": "tsx src/index.ts --list",
-    "test": "node --import tsx --test src/core/context.test.ts src/core/env.test.ts src/core/agent.test.ts src/core/swarm.test.ts"
+    "test": "node --import tsx --test src/core/context.test.ts src/core/env.test.ts src/core/agent.test.ts src/core/swarm.test.ts src/core/deepseek.test.ts"
   },
   "repository": {
     "type": "git",
