@@ -44,8 +44,17 @@ describe("AutoMode AI HTTP server", () => {
     assert.deepEqual(await response.json(), { status: "ok" });
   });
 
-  test("GET / describes the service instead of 404ing", async () => {
+  test("GET / serves the interactive web UI instead of 404ing", async () => {
     const response = await fetch(`${baseUrl}/`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+    const body = await response.text();
+    assert.match(body, /AutoMode AI/);
+    assert.match(body, /<form|<button/);
+  });
+
+  test("GET /api describes the service instead of 404ing", async () => {
+    const response = await fetch(`${baseUrl}/api`);
     assert.equal(response.status, 200);
     const body = (await response.json()) as { service: string; endpoints: Record<string, string> };
     assert.match(body.service, /AutoMode AI/);

@@ -8,6 +8,7 @@ import { contentopsSwarm } from "./examples/contentops.js";
 import { bizanalystSwarm } from "./examples/bizanalyst.js";
 import { outreachSwarm } from "./examples/outreach.js";
 import { supportopsSwarm } from "./examples/supportops.js";
+import { homepageHtml } from "./ui.js";
 import type { SwarmConfig, SwarmResult } from "./core/types.js";
 
 const swarms: Record<string, SwarmConfig> = {
@@ -50,6 +51,14 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
     "Access-Control-Allow-Origin": "*",
   });
   res.end(payload);
+}
+
+function sendHtml(res: ServerResponse, status: number, html: string) {
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(html),
+  });
+  res.end(html);
 }
 
 function isAuthorized(req: IncomingMessage): boolean {
@@ -134,6 +143,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (req.method === "GET" && url.pathname === "/") {
+    sendHtml(res, 200, homepageHtml);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api") {
     sendJson(res, 200, {
       service: "AutoMode AI — Swarm Agent Orchestrator",
       tagline: "Switch your business to AutoMODE — and let AI handle the rest.",
