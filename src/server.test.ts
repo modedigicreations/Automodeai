@@ -69,7 +69,7 @@ describe("AutoMode AI HTTP server", () => {
     assert.deepEqual(keys, ["bizanalyst", "contentops", "edunet", "outreach", "sitegen", "supportops"]);
   });
 
-  test("POST /run rejects requests with no Authorization header", async () => {
+  test("POST /run rejects requests with neither an admin key nor a bring-your-own key", async () => {
     const response = await fetch(`${baseUrl}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -78,7 +78,7 @@ describe("AutoMode AI HTTP server", () => {
     assert.equal(response.status, 401);
   });
 
-  test("POST /run rejects requests with the wrong key", async () => {
+  test("POST /run rejects the wrong admin key when no bring-your-own key is supplied either", async () => {
     const response = await fetch(`${baseUrl}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer wrong-key" },
@@ -87,7 +87,32 @@ describe("AutoMode AI HTTP server", () => {
     assert.equal(response.status, 401);
   });
 
-  test("POST /run rejects an unknown swarm", async () => {
+  test("POST /run rejects a malformed anthropicApiKey before it would ever reach the network", async () => {
+    const response = await fetch(`${baseUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ swarm: "supportops", input: "Hello", anthropicApiKey: "not-a-real-key" }),
+    });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as { error: string };
+    assert.match(body.error, /doesn't look like an Anthropic API key/);
+  });
+
+  test("a bring-your-own anthropicApiKey bypasses the admin-key requirement", async () => {
+    // Pairs a well-formed BYOK key with an invalid swarm name, so this
+    // proves the request got past the auth gate (a 400, not a 401)
+    // without ever starting a job or touching the network.
+    const response = await fetch(`${baseUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ swarm: "not-a-real-swarm", input: "hello", anthropicApiKey: "sk-ant-test-byok-key" }),
+    });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as { error: string };
+    assert.match(body.error, /Unknown swarm/);
+  });
+
+  test("POST /run rejects an unknown swarm (admin path)", async () => {
     const response = await fetch(`${baseUrl}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer test-api-key" },
@@ -98,7 +123,7 @@ describe("AutoMode AI HTTP server", () => {
     assert.match(body.error, /Unknown swarm/);
   });
 
-  test("POST /run rejects empty input", async () => {
+  test("POST /run rejects empty input (admin path)", async () => {
     const response = await fetch(`${baseUrl}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer test-api-key" },
@@ -107,17 +132,12 @@ describe("AutoMode AI HTTP server", () => {
     assert.equal(response.status, 400);
   });
 
-  test("GET /jobs/:id requires auth and 404s on an unknown job", async () => {
-    const unauthed = await fetch(`${baseUrl}/jobs/does-not-exist`);
-    assert.equal(unauthed.status, 401);
-
-    const authed = await fetch(`${baseUrl}/jobs/does-not-exist`, {
-      headers: { Authorization: "Bearer test-api-key" },
-    });
-    assert.equal(authed.status, 404);
+  test("GET /jobs/:id needs no auth (the jobId is its own capability token) and 404s on an unknown job", async () => {
+    const response = await fetch(`${baseUrl}/jobs/does-not-exist`);
+    assert.equal(response.status, 404);
   });
 
-  test("a valid /run request starts a job that fails fast without a configured provider key, never reaching the network", async () => {
+  test("an admin /run request starts a job that fails fast without a configured provider key, never reaching the network", async () => {
     const runResponse = await fetch(`${baseUrl}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer test-api-key" },
@@ -129,9 +149,7 @@ describe("AutoMode AI HTTP server", () => {
 
     let job: { status: string; error?: string } | undefined;
     for (let attempt = 0; attempt < 50; attempt++) {
-      const jobResponse = await fetch(`${baseUrl}/jobs/${jobId}`, {
-        headers: { Authorization: "Bearer test-api-key" },
-      });
+      const jobResponse = await fetch(`${baseUrl}/jobs/${jobId}`);
       assert.equal(jobResponse.status, 200);
       job = await jobResponse.json();
       if (job!.status !== "running") break;

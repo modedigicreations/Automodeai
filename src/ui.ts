@@ -16,8 +16,9 @@ export const homepageHtml = `<!doctype html>
     --border: #262b36;
     --text: #e7e9ee;
     --muted: #8a93a6;
-    --accent: #6ee7b7;
-    --accent-2: #7dd3fc;
+    --accent: #4169e1;
+    --accent-text: #f5f8ff;
+    --accent-2: #7c9eff;
     --danger: #fb7185;
   }
   * { box-sizing: border-box; }
@@ -59,7 +60,7 @@ export const homepageHtml = `<!doctype html>
   .swarm-desc { color: var(--muted); font-size: 0.85rem; margin-top: 0.35rem; min-height: 1.2em; }
   button {
     background: var(--accent);
-    color: #05140e;
+    color: var(--accent-text);
     border: none;
     border-radius: 8px;
     padding: 0.7rem 1.2rem;
@@ -118,9 +119,9 @@ export const homepageHtml = `<!doctype html>
 <main>
   <section class="panel">
     <div class="field">
-      <label for="apiKey">AutoMode API key</label>
-      <input type="password" id="apiKey" placeholder="Paste your AUTOMODE_API_KEY">
-      <p class="hint">Stored only in this browser (localStorage), sent directly to this service. <button class="copy-key" id="forgetKey" type="button">Forget key</button></p>
+      <label for="apiKey">Your Anthropic API key</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-...">
+      <p class="hint">Bring your own key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> — it's sent only with your own requests, used only for your own runs, and stored only in this browser (localStorage), never on our servers. <button class="copy-key" id="forgetKey" type="button">Forget key</button></p>
     </div>
     <div class="field">
       <label for="swarmSelect">Swarm</label>
@@ -165,16 +166,16 @@ export const homepageHtml = `<!doctype html>
   var pollTimer = null;
 
   try {
-    var savedKey = localStorage.getItem('automode_api_key');
+    var savedKey = localStorage.getItem('automode_anthropic_api_key');
     if (savedKey) apiKeyInput.value = savedKey;
   } catch (e) {}
 
   apiKeyInput.addEventListener('change', function () {
-    try { localStorage.setItem('automode_api_key', apiKeyInput.value); } catch (e) {}
+    try { localStorage.setItem('automode_anthropic_api_key', apiKeyInput.value); } catch (e) {}
   });
   forgetKey.addEventListener('click', function () {
     apiKeyInput.value = '';
-    try { localStorage.removeItem('automode_api_key'); } catch (e) {}
+    try { localStorage.removeItem('automode_anthropic_api_key'); } catch (e) {}
   });
 
   function escapeHtml(value) {
@@ -273,8 +274,8 @@ export const homepageHtml = `<!doctype html>
     resultOutput.innerHTML = renderMarkdown(result.output || '');
   }
 
-  function poll(jobId, apiKey) {
-    fetch('/jobs/' + jobId, { headers: { Authorization: 'Bearer ' + apiKey } })
+  function poll(jobId) {
+    fetch('/jobs/' + jobId)
       .then(function (r) {
         if (!r.ok) throw new Error('Status check failed (' + r.status + ').');
         return r.json();
@@ -283,7 +284,7 @@ export const homepageHtml = `<!doctype html>
         if (job.status === 'running') {
           var elapsed = ((Date.now() - job.startedAt) / 1000).toFixed(0);
           setRunning(true, 'Running… (' + elapsed + 's elapsed, this can take a couple of minutes)');
-          pollTimer = setTimeout(function () { poll(jobId, apiKey); }, 3000);
+          pollTimer = setTimeout(function () { poll(jobId); }, 3000);
           return;
         }
         setRunning(false);
@@ -304,14 +305,15 @@ export const homepageHtml = `<!doctype html>
     resultPanel.hidden = true;
     var apiKey = apiKeyInput.value.trim();
     var input = promptInput.value.trim();
-    if (!apiKey) { showError('Paste your AutoMode API key first.'); return; }
+    if (!apiKey) { showError('Paste your Anthropic API key first — get one at console.anthropic.com.'); return; }
+    if (apiKey.indexOf('sk-ant-') !== 0) { showError('That does not look like an Anthropic API key (should start with sk-ant-).'); return; }
     if (!input) { showError('Enter a prompt describing what you want the swarm to do.'); return; }
 
     setRunning(true, 'Starting…');
     fetch('/run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-      body: JSON.stringify({ swarm: swarmSelect.value, input: input }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ swarm: swarmSelect.value, input: input, anthropicApiKey: apiKey }),
     })
       .then(function (r) {
         return r.json().then(function (body) {
@@ -320,7 +322,7 @@ export const homepageHtml = `<!doctype html>
         });
       })
       .then(function (body) {
-        poll(body.jobId, apiKey);
+        poll(body.jobId);
       })
       .catch(function (err) {
         setRunning(false);

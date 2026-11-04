@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { Swarm } from "./core/swarm.js";
+import { Swarm, type ApiKeyOverrides } from "./core/swarm.js";
 import { sitegenSwarm } from "./examples/sitegen.js";
 import { edunetSwarm } from "./examples/edunet.js";
 import { contentopsSwarm } from "./examples/contentops.js";
@@ -22,11 +22,20 @@ const swarms: Record<string, SwarmConfig> = {
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_INPUT_LENGTH = 8_000;
+const MAX_API_KEY_LENGTH = 200;
 // In-memory only — a single-instance deployment's job history is lost on
 // restart/redeploy, and this never shrinks on its own. Acceptable for this
 // scope (no DB, no persistence requirement), but worth knowing if the
 // service runs for a long time under heavy use.
 const MAX_JOBS_RETAINED = 500;
+
+// Public (bring-your-own-key) requests don't cost this server any LLM
+// credit, but they still cost it compute/bandwidth, so cap how often one
+// IP can start a run. Admin-authenticated requests (a valid
+// AUTOMODE_API_KEY) are exempt — that's a trusted, non-public path.
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const RATE_LIMIT_MAX_RUNS_PER_WINDOW = 20;
+const runTimestampsByIp = new Map<string, number[]>();
 
 type Job =
   | { status: "running"; swarm: string; startedAt: number }
@@ -61,7 +70,10 @@ function sendHtml(res: ServerResponse, status: number, html: string) {
   res.end(html);
 }
 
-function isAuthorized(req: IncomingMessage): boolean {
+// A valid AUTOMODE_API_KEY marks a request as the trusted/admin path: it
+// runs on this server's own provider keys with no rate limit. Everyone
+// else is the public bring-your-own-key path (see handleRequest's /run).
+function isAdmin(req: IncomingMessage): boolean {
   const configuredKey = process.env.AUTOMODE_API_KEY;
   if (!configuredKey) return false;
 
@@ -74,6 +86,29 @@ function isAuthorized(req: IncomingMessage): boolean {
   const actual = Buffer.from(provided);
   if (expected.length !== actual.length) return false;
   return timingSafeEqual(expected, actual);
+}
+
+function clientIp(req: IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0];
+  return first?.trim() || req.socket.remoteAddress || "unknown";
+}
+
+// Fixed-window counter per IP, pruned lazily on each check — fine at this
+// traffic scale and avoids a background sweep timer.
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (runTimestampsByIp.get(ip) ?? []).filter((t) => t > windowStart);
+
+  if (timestamps.length >= RATE_LIMIT_MAX_RUNS_PER_WINDOW) {
+    runTimestampsByIp.set(ip, timestamps);
+    return true;
+  }
+
+  timestamps.push(now);
+  runTimestampsByIp.set(ip, timestamps);
+  return false;
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -100,14 +135,19 @@ function listSwarmsPayload() {
   }));
 }
 
-function runJobInBackground(jobId: string, swarmKey: string, input: string) {
+function runJobInBackground(
+  jobId: string,
+  swarmKey: string,
+  input: string,
+  apiKeyOverrides: ApiKeyOverrides | undefined,
+) {
   const config = swarms[swarmKey];
   const swarm = new Swarm(config);
   const startedAt = Date.now();
   jobs.set(jobId, { status: "running", swarm: swarmKey, startedAt });
 
   swarm
-    .run(input)
+    .run(input, apiKeyOverrides)
     .then((result) => {
       jobs.set(jobId, { status: "completed", swarm: swarmKey, startedAt, finishedAt: Date.now(), result });
       pruneJobsIfNeeded();
@@ -154,8 +194,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       endpoints: {
         "GET /health": "Health check.",
         "GET /swarms": "List available swarms.",
-        "POST /run": "Start a swarm run. Requires 'Authorization: Bearer <AUTOMODE_API_KEY>'. Body: { swarm: string, input: string }. Returns 202 with a jobId.",
-        "GET /jobs/:id": "Poll a job's status/result. Requires the same Authorization header.",
+        "POST /run": "Start a swarm run. Body: { swarm: string, input: string, anthropicApiKey?: string, deepseekApiKey?: string }. Bring your own anthropicApiKey to run without an AutoMode admin key (it's used only for this run, never stored). Returns 202 with a jobId.",
+        "GET /jobs/:id": "Poll a job's status/result. jobId is an unguessable UUID, so no auth is required to poll one you were given.",
       },
     });
     return;
@@ -167,8 +207,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (req.method === "POST" && url.pathname === "/run") {
-    if (!isAuthorized(req)) {
-      sendJson(res, 401, { error: "A valid Authorization: Bearer <AUTOMODE_API_KEY> header is required." });
+    const admin = isAdmin(req);
+
+    if (!admin && isRateLimited(clientIp(req))) {
+      sendJson(res, 429, {
+        error: `Rate limit exceeded: at most ${RATE_LIMIT_MAX_RUNS_PER_WINDOW} runs per hour per IP for bring-your-own-key requests.`,
+      });
       return;
     }
 
@@ -187,6 +231,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     const data = body as Record<string, unknown>;
     const swarmKey = typeof data.swarm === "string" ? data.swarm : "";
     const input = typeof data.input === "string" ? data.input.trim() : "";
+    const anthropicApiKey = typeof data.anthropicApiKey === "string" ? data.anthropicApiKey.trim() : "";
+    const deepseekApiKey = typeof data.deepseekApiKey === "string" ? data.deepseekApiKey.trim() : "";
 
     if (!swarms[swarmKey]) {
       sendJson(res, 400, { error: `Unknown swarm "${swarmKey}". Available: ${Object.keys(swarms).join(", ")}` });
@@ -200,19 +246,35 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       sendJson(res, 400, { error: `input must be at most ${MAX_INPUT_LENGTH} characters.` });
       return;
     }
+    if (anthropicApiKey.length > MAX_API_KEY_LENGTH || deepseekApiKey.length > MAX_API_KEY_LENGTH) {
+      sendJson(res, 400, { error: "API key fields look too long to be valid." });
+      return;
+    }
+    if (anthropicApiKey && !anthropicApiKey.startsWith("sk-ant-")) {
+      sendJson(res, 400, { error: "anthropicApiKey doesn't look like an Anthropic API key (should start with sk-ant-)." });
+      return;
+    }
+    if (!admin && !anthropicApiKey && !deepseekApiKey) {
+      sendJson(res, 401, {
+        error:
+          "Supply your own anthropicApiKey (from console.anthropic.com) in the request body, or authenticate as an admin with Authorization: Bearer <AUTOMODE_API_KEY>.",
+      });
+      return;
+    }
 
     const jobId = randomUUID();
-    runJobInBackground(jobId, swarmKey, input);
+    runJobInBackground(jobId, swarmKey, input, {
+      anthropicApiKey: anthropicApiKey || undefined,
+      deepseekApiKey: deepseekApiKey || undefined,
+    });
     sendJson(res, 202, { jobId, status: "running" });
     return;
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/jobs/")) {
-    if (!isAuthorized(req)) {
-      sendJson(res, 401, { error: "A valid Authorization: Bearer <AUTOMODE_API_KEY> header is required." });
-      return;
-    }
-
+    // No auth here: a jobId is a randomUUID (122 bits), unguessable, and
+    // acts as its own capability token — the same pattern as e.g. a
+    // Stripe Checkout session URL. Anyone polling one already has it.
     const jobId = url.pathname.slice("/jobs/".length);
     const job = jobs.get(jobId);
     if (!job) {
@@ -230,7 +292,7 @@ const port = Number(process.env.PORT) || 3000;
 
 if (!process.env.AUTOMODE_API_KEY) {
   console.warn(
-    "Warning: AUTOMODE_API_KEY is not set. POST /run and GET /jobs/:id will reject every request until it's configured.",
+    "Warning: AUTOMODE_API_KEY is not set. There is no admin path — every POST /run must bring its own anthropicApiKey/deepseekApiKey.",
   );
 }
 

@@ -77,6 +77,13 @@ async function runWithConcurrencyLimit<T>(
   return results;
 }
 
+export interface ApiKeyOverrides {
+  /** A caller-supplied Anthropic key (e.g. a visitor's own key in a bring-your-own-key deployment), used instead of ANTHROPIC_API_KEY for this run only. */
+  anthropicApiKey?: string;
+  /** Same idea for DeepSeek agents that don't already have their own deepseekApiKey. */
+  deepseekApiKey?: string;
+}
+
 export class Swarm {
   private config: SwarmConfig;
 
@@ -88,16 +95,30 @@ export class Swarm {
     return this.config.logger ?? console;
   }
 
-  async run(input: string): Promise<SwarmResult> {
+  async run(input: string, apiKeyOverrides?: ApiKeyOverrides): Promise<SwarmResult> {
     loadEnvFile();
+
+    // Build a new phases array rather than mutating `this.config.phases` —
+    // `this.config` may be an exported swarm singleton shared across every
+    // caller in this process, so mutating it would leak one run's
+    // bring-your-own deepseekApiKey into every later run.
+    const phases = apiKeyOverrides?.deepseekApiKey
+      ? this.config.phases.map((phase) => ({
+          ...phase,
+          agents: phase.agents.map((agent) => ({
+            ...agent,
+            deepseekApiKey: agent.deepseekApiKey ?? apiKeyOverrides.deepseekApiKey,
+          })),
+        }))
+      : this.config.phases;
 
     let needsAnthropic = false;
     let needsDeepSeek = false;
-    for (const phase of this.config.phases) {
+    for (const phase of phases) {
       for (const agent of phase.agents) {
         const provider = agent.provider ?? (agent.model?.includes("deepseek") ? "deepseek" : "anthropic");
         if (provider === "deepseek") {
-          if (!agent.deepseekApiKey) {
+          if (!agent.deepseekApiKey && !process.env["DEEPSEEK_API_KEY"]) {
             needsDeepSeek = true;
           }
         } else {
@@ -106,21 +127,23 @@ export class Swarm {
       }
     }
 
-    if (needsAnthropic && !process.env["ANTHROPIC_API_KEY"]) {
+    const anthropicApiKey = apiKeyOverrides?.anthropicApiKey || process.env["ANTHROPIC_API_KEY"];
+
+    if (needsAnthropic && !anthropicApiKey) {
       throw new Error(
-        "ANTHROPIC_API_KEY environment variable is required. Set it or create a .env file.",
+        "ANTHROPIC_API_KEY environment variable is required. Set it, create a .env file, or supply your own key.",
       );
     }
 
-    if (needsDeepSeek && !process.env["DEEPSEEK_API_KEY"]) {
+    if (needsDeepSeek) {
       throw new Error(
-        "DEEPSEEK_API_KEY environment variable is required for DeepSeek agents. Set it or create a .env file.",
+        "DEEPSEEK_API_KEY environment variable is required for DeepSeek agents. Set it, create a .env file, or supply your own key.",
       );
     }
 
     // Local to this run — a shared instance field would race if run() were
     // called concurrently on the same Swarm instance.
-    const client = process.env["ANTHROPIC_API_KEY"] ? new Anthropic() : null;
+    const client = anthropicApiKey ? new Anthropic({ apiKey: anthropicApiKey }) : null;
     const swarmStart = Date.now();
     const context = new SwarmContext(input);
     const maxRetries = this.config.maxRetries ?? 1;
@@ -130,9 +153,9 @@ export class Swarm {
     this.logger.log(`\n🐝 Swarm "${this.config.name}" activated`);
     this.logger.log(`   ${this.config.description}`);
     this.logger.log(`   Input: ${input.slice(0, 100)}${input.length > 100 ? "..." : ""}`);
-    this.logger.log(`   Phases: ${this.config.phases.length} | Agents: ${this.config.phases.reduce((sum, p) => sum + p.agents.length, 0)}\n`);
+    this.logger.log(`   Phases: ${phases.length} | Agents: ${phases.reduce((sum, p) => sum + p.agents.length, 0)}\n`);
 
-    for (const phase of this.config.phases) {
+    for (const phase of phases) {
       const phaseStart = Date.now();
       const agentCount = phase.agents.length;
 
