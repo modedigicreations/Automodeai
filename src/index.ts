@@ -285,6 +285,8 @@ export { Agent } from "./core/agent.js";
 export { SwarmContext } from "./core/context.js";
 export { defineTool } from "./tools/tool.js";
 export type { JsonSchemaProperty } from "./tools/tool.js";
+export { createWebsiteTools, publishWebsiteArticles, writeWebsiteFile } from "./tools/website.js";
+export { createRailwayDeploymentTool, deployWebsiteToRailway } from "./tools/railway.js";
 export { sitegenSwarm } from "./examples/sitegen.js";
 export { edunetSwarm } from "./examples/edunet.js";
 export { contentopsSwarm } from "./examples/contentops.js";

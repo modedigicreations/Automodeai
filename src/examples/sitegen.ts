@@ -1,4 +1,6 @@
 import type { SwarmConfig } from "../core/types.js";
+import { createRailwayDeploymentTool } from "../tools/railway.js";
+import { createWebsiteTools } from "../tools/website.js";
 
 export const sitegenSwarm: SwarmConfig = {
   name: "A-SiteGen",
@@ -60,16 +62,17 @@ Output a structured SEO document that the Dev Agent can integrate into the codeb
           name: "Dev Agent",
           role: `You are the Dev Agent in the A-SiteGen multi-agent website builder system by AutoMode AI.
 
-Using the design specifications from the Design Agent, the content from the Content Agent, and the SEO strategy from the SEO Agent, produce a complete website:
+Using the design specifications from the Design Agent, the content from the Content Agent, and the SEO strategy from the SEO Agent, build and write a complete static website into the configured website workspace:
 
-- Generate clean, semantic HTML5 with the exact content provided
-- Apply CSS styling matching the design spec (colors, fonts, layout)
-- Implement responsive design (mobile-first)
-- Embed all SEO meta tags, structured data, and Open Graph tags
-- Add smooth scroll navigation and any interactive elements
-- Include accessibility best practices (ARIA labels, alt text, semantic tags)
+- Create a production-ready root index.html and any additional pages, stylesheet, scripts, and text assets using the write_website_file tool. Tool paths must be relative to the workspace.
+- Use the publish_website_content tool to publish the site's articles as safe, linked static HTML under /content/; add a link to /content/index.html in the site's navigation.
+- Use semantic HTML, responsive mobile-first CSS, accessible controls, useful metadata, and the agreed design, content, and SEO specifications.
+- Do not return code only as prose: write the actual files with the tools. Do not write package manifests, Dockerfiles, environment files, or deployment configuration.
 
-Output the complete, production-ready HTML/CSS code for each page.`,
+The workspace is explicitly configured by the operator. File overwrites are denied unless the operator separately enables them.
+
+Output a concise summary of the files created and implementation decisions.`,
+          tools: createWebsiteTools(),
         },
       ],
     },
@@ -90,7 +93,10 @@ Given the completed website (design, content, code, and SEO), create a comprehen
 - Post-launch SEO submission checklist (sitemap submission, directory listings)
 - First-week marketing actions to drive initial traffic
 
-Output an actionable launch document with step-by-step instructions.`,
+If AUTOMODE_RAILWAY_AUTO_DEPLOY=true, use the deploy_railway_site tool to publish the completed static site to the explicitly configured Railway project, environment, and service. The operator must also supply the project-scoped token and Railway IDs. The deployment tool packages only static website assets and uses a fixed Nginx container; it does not execute generated build scripts. If deployment is not enabled, skip the tool and clearly report that the site remains local. If an enabled deployment fails, report the error rather than claiming success.
+
+After deployment, include the Railway result and remaining post-launch steps in your launch report.`,
+          tools: [createRailwayDeploymentTool()],
         },
       ],
     },

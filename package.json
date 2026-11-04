@@ -12,7 +12,7 @@
     "swarm:contentops": "tsx src/index.ts --swarm contentops",
     "swarm:bizanalyst": "tsx src/index.ts --swarm bizanalyst",
     "swarm:list": "tsx src/index.ts --list",
-    "test": "node --import tsx --test src/core/context.test.ts src/core/env.test.ts src/core/agent.test.ts src/core/swarm.test.ts src/core/deepseek.test.ts"
+    "test": "node --import tsx --test src/core/context.test.ts src/core/env.test.ts src/core/agent.test.ts src/core/swarm.test.ts src/core/deepseek.test.ts src/tools/website.test.ts src/tools/railway.test.ts"
   },
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "zod": "^3.24.0"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -79,6 +79,15 @@ Business Intelligence Analyst — 5 agents across 3 phases:
 | Business Model & Strategy | Financial Agent, SWOT Agent | Parallel |
 | Executive Summary | Analyst Agent | Sequential |
 
+### A-Outreach Protocol
+Lead generation and personalized outreach — 4 agents across 3 phases:
+
+| Phase | Agents | Execution |
+|-------|--------|-----------|
+| Discovery & Audit | Lead Scraper, SEO Auditor | Parallel |
+| Email Composition | Outreach Copywriter | Sequential |
+| Optimization & Launch | Campaign Optimizer | Sequential |
+
 ## Getting Started
 
 ### Prerequisites
@@ -114,6 +123,12 @@ You can also set the key directly in your shell:
 export ANTHROPIC_API_KEY=your-api-key-here
 ```
 
+For A-SiteGen, set `AUTOMODE_SITE_WORKSPACE` to a dedicated directory for generated websites. The file-writing and article-publishing tools are scoped to that directory, reject traversal and private/config paths, and do not overwrite existing files unless `AUTOMODE_ALLOW_FILE_OVERWRITE=true`.
+
+To enable Railway deployment, install the Railway CLI and configure a **project-scoped** `RAILWAY_TOKEN` plus `AUTOMODE_RAILWAY_PROJECT_ID`, `AUTOMODE_RAILWAY_ENVIRONMENT_ID`, and `AUTOMODE_RAILWAY_SERVICE_ID`. Set `AUTOMODE_RAILWAY_AUTO_DEPLOY=true` only when you want A-SiteGen's Launch Agent to deploy automatically. The configured token should be scoped to the target project/environment. The deployment tool sends only public static website assets and uses a fixed Nginx container; it does not run generated package/build scripts or create new Railway projects.
+
+Copy the added settings from `.env.example`. Keep API tokens out of source control and use Railway's protected variables for production.
+
 ### Usage
 
 ```bash
@@ -129,6 +144,14 @@ npx tsx src/index.ts --swarm contentops "Launch campaign for a productivity SaaS
 # Get an executive-grade business analysis
 npx tsx src/index.ts --swarm bizanalyst "A subscription meal-prep delivery service in Abuja"
 ```
+
+With the site workspace and Railway variables configured and deployment enabled, A-SiteGen writes the generated static pages, publishes its articles under `/content/`, then deploys the site to the selected Railway service. Without deployment enabled, it writes the site locally and reports that it was not deployed:
+
+```bash
+npx tsx src/index.ts --swarm sitegen "I run a fashion store in Lagos, I want an ecommerce site"
+```
+
+Railway deployment is intentionally opt-in. Set `AUTOMODE_RAILWAY_AUTO_DEPLOY=true` and provide the Railway token and target IDs to enable the tool. Missing target settings cause an explicit error if deployment is invoked; AutoMode never creates a new Railway project or silently chooses a service.
 
 Or using npm scripts:
 
@@ -307,7 +330,9 @@ src/
 │   ├── context.ts        # SwarmContext (shared workspace between agents)
 │   └── types.ts          # TypeScript interfaces
 ├── tools/
-│   └── tool.ts           # Tool definition helper
+│   ├── tool.ts           # Tool definition helper
+│   ├── website.ts        # Scoped website file and content publishing tools
+│   └── railway.ts        # Static-site Railway deployment tool
 └── examples/
     ├── sitegen.ts        # A-SiteGen swarm definition
     ├── edunet.ts         # A-EduNet swarm definition
