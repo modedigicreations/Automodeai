@@ -263,7 +263,7 @@ const agentWithTools = {
 | `role` | string | required | System prompt defining the agent's behavior |
 | `model` | string | `claude-sonnet-4-6` | Claude model to use |
 | `tools` | ToolDefinition[] | `[]` | Tools the agent can call |
-| `timeoutMs` | number | `120000` | Per-API-call timeout in milliseconds |
+| `timeoutMs` | number | `240000` | Per-API-call timeout in milliseconds |
 | `maxTokens` | number | `16000` | Maximum Claude output tokens for one response |
 | `inputSchema` | ZodType | — | Zod schema to validate input |
 | `outputSchema` | ZodType | — | Zod schema to validate output |

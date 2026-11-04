@@ -283,7 +283,7 @@ export const homepageHtml = `<!doctype html>
       .then(function (job) {
         if (job.status === 'running') {
           var elapsed = ((Date.now() - job.startedAt) / 1000).toFixed(0);
-          setRunning(true, 'Running… (' + elapsed + 's elapsed, this can take a couple of minutes)');
+          setRunning(true, 'Running… (' + elapsed + 's elapsed, longer swarms can take several minutes)');
           pollTimer = setTimeout(function () { poll(jobId); }, 3000);
           return;
         }

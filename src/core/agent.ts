@@ -3,7 +3,14 @@ import type { AgentConfig, AgentResult, ToolDefinition } from "./types.js";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
-const DEFAULT_TIMEOUT_MS = 120_000;
+// 4 minutes — a single call's generous ceiling, not the typical latency.
+// A synthesis-style agent (e.g. ContentOps's Editor Agent) can ingest every
+// prior agent's full output and still need to produce several thousand
+// tokens of structured output in one call; 120s was tight enough to trip
+// real, non-broken runs. This runs in a background job (see src/server.ts),
+// not inline with an HTTP request, so a longer per-call ceiling costs
+// nothing beyond the wait itself.
+const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_MAX_TOKENS = 16_000;
 const MAX_MESSAGE_ITERATIONS = 10;
 const MAX_VALIDATION_RETRIES = 3;
