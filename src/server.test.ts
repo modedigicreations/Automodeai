@@ -1,0 +1,127 @@
+import assert from "node:assert/strict";
+import type { AddressInfo } from "node:net";
+import { afterEach, beforeEach, describe, test } from "node:test";
+import { createApp } from "./server.js";
+
+const serverEnvironmentVariables = ["AUTOMODE_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY"];
+
+describe("AutoMode AI HTTP server", () => {
+  let server: ReturnType<typeof createApp>;
+  let baseUrl: string;
+  let originalEnvironment: Record<string, string | undefined>;
+
+  beforeEach(async () => {
+    originalEnvironment = Object.fromEntries(
+      serverEnvironmentVariables.map((name) => [name, process.env[name]]),
+    );
+    process.env.AUTOMODE_API_KEY = "test-api-key";
+    // Neither provider key is configured — a /run request should fail fast
+    // (before any network call) with a clear error, never silently spend
+    // real API credit during tests.
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.DEEPSEEK_API_KEY;
+
+    server = createApp();
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const { port } = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  afterEach(async () => {
+    for (const name of serverEnvironmentVariables) {
+      const value = originalEnvironment[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  });
+
+  test("GET /health requires no auth and reports ok", async () => {
+    const response = await fetch(`${baseUrl}/health`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { status: "ok" });
+  });
+
+  test("GET /swarms lists every registered swarm without auth", async () => {
+    const response = await fetch(`${baseUrl}/swarms`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { swarms: { key: string }[] };
+    const keys = body.swarms.map((s) => s.key).sort();
+    assert.deepEqual(keys, ["bizanalyst", "contentops", "edunet", "outreach", "sitegen", "supportops"]);
+  });
+
+  test("POST /run rejects requests with no Authorization header", async () => {
+    const response = await fetch(`${baseUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ swarm: "supportops", input: "A customer says the app is slow." }),
+    });
+    assert.equal(response.status, 401);
+  });
+
+  test("POST /run rejects requests with the wrong key", async () => {
+    const response = await fetch(`${baseUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer wrong-key" },
+      body: JSON.stringify({ swarm: "supportops", input: "A customer says the app is slow." }),
+    });
+    assert.equal(response.status, 401);
+  });
+
+  test("POST /run rejects an unknown swarm", async () => {
+    const response = await fetch(`${baseUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-api-key" },
+      body: JSON.stringify({ swarm: "not-a-real-swarm", input: "hello" }),
+    });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as { error: string };
+    assert.match(body.error, /Unknown swarm/);
+  });
+
+  test("POST /run rejects empty input", async () => {
+    const response = await fetch(`${baseUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-api-key" },
+      body: JSON.stringify({ swarm: "supportops", input: "   " }),
+    });
+    assert.equal(response.status, 400);
+  });
+
+  test("GET /jobs/:id requires auth and 404s on an unknown job", async () => {
+    const unauthed = await fetch(`${baseUrl}/jobs/does-not-exist`);
+    assert.equal(unauthed.status, 401);
+
+    const authed = await fetch(`${baseUrl}/jobs/does-not-exist`, {
+      headers: { Authorization: "Bearer test-api-key" },
+    });
+    assert.equal(authed.status, 404);
+  });
+
+  test("a valid /run request starts a job that fails fast without a configured provider key, never reaching the network", async () => {
+    const runResponse = await fetch(`${baseUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-api-key" },
+      body: JSON.stringify({ swarm: "supportops", input: "A customer says the app is slow." }),
+    });
+    assert.equal(runResponse.status, 202);
+    const { jobId } = (await runResponse.json()) as { jobId: string };
+    assert.ok(jobId);
+
+    let job: { status: string; error?: string } | undefined;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const jobResponse = await fetch(`${baseUrl}/jobs/${jobId}`, {
+        headers: { Authorization: "Bearer test-api-key" },
+      });
+      assert.equal(jobResponse.status, 200);
+      job = await jobResponse.json();
+      if (job!.status !== "running") break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    assert.equal(job?.status, "failed");
+    assert.match(job?.error ?? "", /ANTHROPIC_API_KEY/);
+  });
+});

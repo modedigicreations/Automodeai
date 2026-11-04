@@ -6,13 +6,17 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/index.ts",
+    "start": "tsx src/server.ts",
+    "serve": "tsx src/server.ts",
+    "cli": "tsx src/index.ts",
     "swarm:sitegen": "tsx src/index.ts --swarm sitegen",
     "swarm:edunet": "tsx src/index.ts --swarm edunet",
     "swarm:contentops": "tsx src/index.ts --swarm contentops",
     "swarm:bizanalyst": "tsx src/index.ts --swarm bizanalyst",
+    "swarm:outreach": "tsx src/index.ts --swarm outreach",
+    "swarm:supportops": "tsx src/index.ts --swarm supportops",
     "swarm:list": "tsx src/index.ts --list",
-    "test": "node --import tsx --test src/core/context.test.ts src/core/env.test.ts src/core/agent.test.ts src/core/swarm.test.ts src/core/deepseek.test.ts src/tools/website.test.ts src/tools/railway.test.ts"
+    "test": "node --import tsx --test src/core/context.test.ts src/core/env.test.ts src/core/agent.test.ts src/core/swarm.test.ts src/core/deepseek.test.ts src/tools/website.test.ts src/tools/railway.test.ts src/server.test.ts"
   },
   "repository": {
     "type": "git",

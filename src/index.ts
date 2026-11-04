@@ -7,6 +7,7 @@ import { edunetSwarm } from "./examples/edunet.js";
 import { contentopsSwarm } from "./examples/contentops.js";
 import { bizanalystSwarm } from "./examples/bizanalyst.js";
 import { outreachSwarm } from "./examples/outreach.js";
+import { supportopsSwarm } from "./examples/supportops.js";
 import type { Logger, SwarmConfig } from "./core/types.js";
 
 const swarms: Record<string, SwarmConfig> = {
@@ -15,6 +16,7 @@ const swarms: Record<string, SwarmConfig> = {
   contentops: contentopsSwarm,
   bizanalyst: bizanalystSwarm,
   outreach: outreachSwarm,
+  supportops: supportopsSwarm,
 };
 
 const silentLogger: Logger = {
@@ -48,6 +50,7 @@ Available swarms:
   contentops   A-ContentOps — Marketing Content Pipeline (5 agents, 3 phases)
   bizanalyst   A-BizAnalyst — Business Intelligence Analyst (5 agents, 3 phases)
   outreach     A-Outreach Protocol — Lead Generation & Outreach (4 agents, 3 phases)
+  supportops   A-SupportOps — Customer Support Automation (5 agents, 3 phases)
 
 Examples:
   npx tsx src/index.ts --interactive
@@ -227,15 +230,23 @@ async function main(): Promise<void> {
   }
 
   if (providerOverride && config) {
-    config.phases = config.phases.map(p => ({
-      ...p,
-      agents: p.agents.map(a => ({
-        ...a,
-        provider: providerOverride,
-        // Update models to fallback defaults
-        model: providerOverride === "deepseek" ? "deepseek-chat" : "claude-sonnet-4-6",
+    // Build a new config object rather than mutating `config.phases` in
+    // place — `config` here is the actual exported swarm singleton (e.g.
+    // `sitegenSwarm`), shared by every caller in this process. Mutating it
+    // would permanently switch that swarm to the override provider for
+    // every later run in the same process, including for library
+    // consumers reusing the exported config after this CLI path runs.
+    config = {
+      ...config,
+      phases: config.phases.map((p) => ({
+        ...p,
+        agents: p.agents.map((a) => ({
+          ...a,
+          provider: providerOverride,
+          model: providerOverride === "deepseek" ? "deepseek-chat" : "claude-sonnet-4-6",
+        })),
       })),
-    }));
+    };
   }
 
   const jsonMode = args.includes("--json");
@@ -292,6 +303,7 @@ export { edunetSwarm } from "./examples/edunet.js";
 export { contentopsSwarm } from "./examples/contentops.js";
 export { bizanalystSwarm } from "./examples/bizanalyst.js";
 export { outreachSwarm } from "./examples/outreach.js";
+export { supportopsSwarm } from "./examples/supportops.js";
 export type {
   AgentConfig,
   AgentResult,

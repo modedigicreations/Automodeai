@@ -112,7 +112,7 @@ export class Swarm {
       );
     }
 
-    if (needsDeepSeek && !process.env["DEEPSEEK_API_KEY"] && !process.env["DEEPSEEK_API_KEY"]) {
+    if (needsDeepSeek && !process.env["DEEPSEEK_API_KEY"]) {
       throw new Error(
         "DEEPSEEK_API_KEY environment variable is required for DeepSeek agents. Set it or create a .env file.",
       );

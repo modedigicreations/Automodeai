@@ -88,6 +88,17 @@ Lead generation and personalized outreach — 4 agents across 3 phases:
 | Email Composition | Outreach Copywriter | Sequential |
 | Optimization & Launch | Campaign Optimizer | Sequential |
 
+### A-SupportOps
+Customer Support Automation — 5 agents across 3 phases:
+
+| Phase | Agents | Execution |
+|-------|--------|-----------|
+| Triage & Context | Triage Agent, Context Agent | Parallel |
+| Response & Escalation | Response Agent, Escalation Agent | Parallel |
+| Quality & Knowledge | QA & Knowledge Agent | Sequential |
+
+Given a raw support ticket, triages it (category, severity, sentiment), drafts a ready-to-send reply, decides whether it needs escalating to engineering/product/billing/leadership (with a ready-to-send escalation packet when it does), and finishes with a QA pass plus an optional knowledge-base article drafted from the resolution.
+
 ## Getting Started
 
 ### Prerequisites

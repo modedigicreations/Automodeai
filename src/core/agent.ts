@@ -362,12 +362,16 @@ Please correct your output to strictly conform to the required format/schema. If
 
     return Promise.all(
       toolUseBlocks.map(async (block): Promise<Anthropic.ToolResultBlockParam> => {
-        const tool = this.findTool(tools, block.name);
         let result: string;
         let isError = false;
         try {
+          const tool = this.findTool(tools, block.name);
           result = await tool.execute(block.input as Record<string, unknown>);
         } catch (err) {
+          // A hallucinated/unknown tool name (findTool throwing) must be
+          // reported back as a tool_result the model can see and recover
+          // from — letting it escape here instead crashes the whole agent
+          // run on what's often a self-correctable mistake.
           result = `Error: ${err instanceof Error ? err.message : String(err)}`;
           isError = true;
         }
