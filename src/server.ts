@@ -133,6 +133,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/") {
+    sendJson(res, 200, {
+      service: "AutoMode AI — Swarm Agent Orchestrator",
+      tagline: "Switch your business to AutoMODE — and let AI handle the rest.",
+      endpoints: {
+        "GET /health": "Health check.",
+        "GET /swarms": "List available swarms.",
+        "POST /run": "Start a swarm run. Requires 'Authorization: Bearer <AUTOMODE_API_KEY>'. Body: { swarm: string, input: string }. Returns 202 with a jobId.",
+        "GET /jobs/:id": "Poll a job's status/result. Requires the same Authorization header.",
+      },
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/swarms") {
     sendJson(res, 200, { swarms: listSwarmsPayload() });
     return;
