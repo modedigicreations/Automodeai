@@ -94,6 +94,8 @@ export const homepageHtml = `<!doctype html>
     padding: 0.5rem 0.75rem; font-size: 0.82rem; color: var(--muted);
   }
   .agent-row strong { color: var(--text); font-weight: 600; }
+  .output-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+  .output-header .swarm-desc { margin: 0; }
   .output {
     background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
     padding: 1rem 1.25rem; overflow-x: auto;
@@ -102,10 +104,13 @@ export const homepageHtml = `<!doctype html>
   .output h2:first-child { margin-top: 0; }
   .output h3 { font-size: 0.95rem; margin: 1.1rem 0 0.4rem; color: var(--accent-2); }
   .output p { margin: 0.5rem 0; }
+  .output ul, .output ol { margin: 0.5rem 0; padding-left: 1.4rem; }
+  .output li { margin: 0.2rem 0; }
   .output hr { border: none; border-top: 1px solid var(--border); margin: 1.1rem 0; }
   .output code { background: #0e1117; padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.88em; }
   .output table { border-collapse: collapse; width: 100%; margin: 0.6rem 0; font-size: 0.85rem; }
   .output th, .output td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }
+  .output th { background: var(--panel); }
   .hint { color: var(--muted); font-size: 0.78rem; }
   a { color: var(--accent-2); }
   .copy-key { font-size: 0.78rem; color: var(--muted); cursor: pointer; text-decoration: underline; background: none; border: none; padding: 0; }
@@ -142,6 +147,10 @@ export const homepageHtml = `<!doctype html>
   <section class="panel" id="resultPanel" hidden>
     <div class="meta" id="resultMeta"></div>
     <div class="agents" id="resultAgents"></div>
+    <div class="output-header">
+      <p class="swarm-desc">Generated output</p>
+      <button class="secondary" id="copyOutputButton" type="button">Copy</button>
+    </div>
     <div class="output" id="resultOutput"></div>
   </section>
 </main>
@@ -161,9 +170,11 @@ export const homepageHtml = `<!doctype html>
   var resultAgents = document.getElementById('resultAgents');
   var resultOutput = document.getElementById('resultOutput');
   var forgetKey = document.getElementById('forgetKey');
+  var copyOutputButton = document.getElementById('copyOutputButton');
 
   var swarms = [];
   var pollTimer = null;
+  var lastOutputText = '';
 
   try {
     var savedKey = localStorage.getItem('automode_anthropic_api_key');
@@ -186,17 +197,34 @@ export const homepageHtml = `<!doctype html>
   }
 
   // Minimal, dependency-free markdown-ish renderer for swarm output —
-  // headers, bold/italic, inline code, hr, and paragraphs. Good enough for
-  // the structured markdown agents produce; not a full markdown parser.
+  // headers, bold/italic, inline code, hr, lists, GFM tables, and
+  // paragraphs. Good enough for the structured markdown agents produce;
+  // not a full markdown parser.
   function renderMarkdown(markdown) {
     var lines = markdown.split(/\\r?\\n/);
     var html = '';
     var paragraph = [];
-    function flush() {
+    var listItems = [];
+    var listTag = null;
+
+    function flushParagraph() {
       if (paragraph.length) {
         html += '<p>' + paragraph.join('<br>') + '</p>';
         paragraph = [];
       }
+    }
+    function flushList() {
+      if (listItems.length) {
+        html += '<' + listTag + '>' + listItems.map(function (item) {
+          return '<li>' + inline(item) + '</li>';
+        }).join('') + '</' + listTag + '>';
+        listItems = [];
+        listTag = null;
+      }
+    }
+    function flushAll() {
+      flushParagraph();
+      flushList();
     }
     function inline(text) {
       text = escapeHtml(text);
@@ -204,19 +232,64 @@ export const homepageHtml = `<!doctype html>
       text = text.replace(/\`(.+?)\`/g, '<code>$1</code>');
       return text;
     }
+    function isTableRow(line) {
+      return /^\\s*\\|.*\\|\\s*$/.test(line);
+    }
+    function isTableSeparator(line) {
+      return /^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)+\\|?\\s*$/.test(line);
+    }
+    function splitTableRow(line) {
+      var trimmed = line.trim();
+      if (trimmed.charAt(0) === '|') trimmed = trimmed.slice(1);
+      if (trimmed.charAt(trimmed.length - 1) === '|') trimmed = trimmed.slice(0, -1);
+      return trimmed.split('|').map(function (cell) { return cell.trim(); });
+    }
+
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
-      if (/^---+$/.test(line.trim())) { flush(); html += '<hr>'; continue; }
+
+      if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+        flushAll();
+        var headerCells = splitTableRow(line);
+        var bodyRows = [];
+        i += 2;
+        while (i < lines.length && isTableRow(lines[i])) {
+          bodyRows.push(splitTableRow(lines[i]));
+          i++;
+        }
+        i--;
+        html += '<table><thead><tr>' + headerCells.map(function (cell) {
+          return '<th>' + inline(cell) + '</th>';
+        }).join('') + '</tr></thead><tbody>' + bodyRows.map(function (row) {
+          return '<tr>' + row.map(function (cell) { return '<td>' + inline(cell) + '</td>'; }).join('') + '</tr>';
+        }).join('') + '</tbody></table>';
+        continue;
+      }
+
+      if (/^---+$/.test(line.trim())) { flushAll(); html += '<hr>'; continue; }
+
       var h3 = line.match(/^###\\s+(.*)/);
-      if (h3) { flush(); html += '<h3>' + inline(h3[1]) + '</h3>'; continue; }
+      if (h3) { flushAll(); html += '<h3>' + inline(h3[1]) + '</h3>'; continue; }
       var h2 = line.match(/^##\\s+(.*)/);
-      if (h2) { flush(); html += '<h2>' + inline(h2[1]) + '</h2>'; continue; }
+      if (h2) { flushAll(); html += '<h2>' + inline(h2[1]) + '</h2>'; continue; }
       var h1 = line.match(/^#\\s+(.*)/);
-      if (h1) { flush(); html += '<h2>' + inline(h1[1]) + '</h2>'; continue; }
-      if (line.trim() === '') { flush(); continue; }
+      if (h1) { flushAll(); html += '<h2>' + inline(h1[1]) + '</h2>'; continue; }
+
+      var ulItem = line.match(/^\\s*[-*]\\s+(.*)/);
+      var olItem = line.match(/^\\s*\\d+\\.\\s+(.*)/);
+      if (ulItem || olItem) {
+        var tag = ulItem ? 'ul' : 'ol';
+        if (listTag && listTag !== tag) flushList();
+        listTag = tag;
+        listItems.push((ulItem || olItem)[1]);
+        continue;
+      }
+      flushList();
+
+      if (line.trim() === '') { flushParagraph(); continue; }
       paragraph.push(inline(line));
     }
-    flush();
+    flushAll();
     return html;
   }
 
@@ -272,7 +345,40 @@ export const homepageHtml = `<!doctype html>
     }).join('');
 
     resultOutput.innerHTML = renderMarkdown(result.output || '');
+    lastOutputText = result.output || '';
   }
+
+  function copyToClipboard(text) {
+    function onCopied() {
+      var original = copyOutputButton.textContent;
+      copyOutputButton.textContent = 'Copied!';
+      setTimeout(function () { copyOutputButton.textContent = original; }, 1500);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onCopied).catch(function () { fallbackCopy(text, onCopied); });
+    } else {
+      fallbackCopy(text, onCopied);
+    }
+  }
+
+  function fallbackCopy(text, onCopied) {
+    try {
+      var textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      onCopied();
+    } catch (e) {}
+  }
+
+  copyOutputButton.addEventListener('click', function () {
+    if (lastOutputText) copyToClipboard(lastOutputText);
+  });
 
   function poll(jobId) {
     fetch('/jobs/' + jobId)
